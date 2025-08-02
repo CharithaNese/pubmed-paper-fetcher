@@ -1,45 +1,49 @@
-# pubmed/filters.py
 import re
-from typing import List, Dict, Any
+from typing import List, Dict
 
-
-COMPANY_KEYWORDS = [
-    "inc", "ltd", "llc", "gmbh", "corp", "co.", "company", "biotech", "pharma",
-    "therapeutics", "laboratories", "sciences", "diagnostics", "novartis",
-    "pfizer", "astrazeneca", "regeneron", "genentech", "moderna", "sanofi",
-    "abbvie", "merck", "bayer", "gilead", "roche", "johnson & johnson", "takeda"
+NON_ACADEMIC_KEYWORDS = [
+    "pharma", "biotech", "inc", "ltd", "gmbh", "corp", "co.", "llc", "pvt", "ag", "industries"
 ]
 
-def is_non_academic(affiliation: str) -> bool:
-    affiliation = affiliation.lower()
-    return any(keyword in affiliation for keyword in COMPANY_KEYWORDS)
+def is_non_academic_affiliation(affiliation: str) -> bool:
+    affiliation_lower = affiliation.lower()
+    return any(keyword in affiliation_lower for keyword in NON_ACADEMIC_KEYWORDS)
 
-def extract_non_academic_authors(article: Dict[str, Any]) -> List[Dict[str, str]]:
+def extract_email(affiliation: str) -> str:
+    match = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", affiliation)
+    return match.group(0) if match else ""
+
+def extract_non_academic_authors(article: Dict) -> List[Dict]:
+    result = []
     try:
-        authors = article.get("MedlineCitation", {}).get("Article", {}).get("AuthorList", {}).get("Author", [])
-        if not isinstance(authors, list):
+        medline = article.get("MedlineCitation", {})
+        article_info = medline.get("Article", {})
+        authors = article_info.get("AuthorList", {}).get("Author", [])
+        if isinstance(authors, dict):
             authors = [authors]
-    except Exception:
-        return []
 
-    non_academics = []
+        for author in authors:
+            if not isinstance(author, dict):
+                continue
 
-    for author in authors:
-        try:
-            name = f"{author.get('ForeName', '')} {author.get('LastName', '')}".strip()
-            aff_info = author.get("AffiliationInfo", [])
-            if not isinstance(aff_info, list):
-                aff_info = [aff_info]
-            affiliations = [a.get("Affiliation", "") for a in aff_info if isinstance(a, dict)]
+            affiliation_info = author.get("AffiliationInfo")
+            if affiliation_info:
+                if isinstance(affiliation_info, list):
+                    affil_text = affiliation_info[0].get("Affiliation", "")
+                else:
+                    affil_text = affiliation_info.get("Affiliation", "")
+            else:
+                affil_text = ""
 
-            for aff in affiliations:
-                if is_non_academic(aff):
-                    non_academics.append({
-                        "Name": name,
-                        "Affiliation": aff
-                    })
-                    break
-        except Exception:
-            continue
+            if is_non_academic_affiliation(affil_text):
+                email = extract_email(affil_text)
+                name = f"{author.get('ForeName', '')} {author.get('LastName', '')}".strip()
+                result.append({
+                    "Author": name,
+                    "Affiliation": affil_text,
+                    "Email": email
+                })
+    except Exception as e:
+        raise RuntimeError(f"Failed to parse article: {e}")
+    return result
 
-    return non_academics

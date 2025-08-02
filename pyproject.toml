@@ -1,24 +1,15 @@
 [tool.poetry]
-name = "pubmed-paper-fetcher"
+name = "get-papers-list"
 version = "0.1.0"
-description = "Fetch PubMed papers with at least one non-academic author."
-authors = ["Charitha Nese <your.email@example.com>"]
+description = "Fetches PubMed research papers with non-academic authors from pharma/biotech."
+authors = ["Your Name <your.email@example.com>"]
+packages = [{ include = "pubmed" }]
 
-packages = [
-    { include = "pubmed" }
-]
+[tool.poetry.scripts]
+get-papers-list = "cli:main"
 
 [tool.poetry.dependencies]
 python = "^3.9"
-requests = "^2.32.4"
-pandas = "^2.3.1"
-typer = "^0.9.4"
+requests = "^2.31.0"
 xmltodict = "^0.13.0"
-
-[tool.poetry.scripts]
-get-papers-list = "cli:app"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
+pandas = "^2.0.0"

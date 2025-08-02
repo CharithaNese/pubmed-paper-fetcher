@@ -1,43 +1,33 @@
-import requests
-import xmltodict
 from typing import List, Dict
+import xmltodict
+import requests
+import logging
 
-def fetch_pubmed_ids(query: str) -> List[str]:
-    print(f"[DEBUG] Searching PubMed for: {query}")
+def fetch_pubmed_ids(query: str, max_results: int = 20) -> List[str]:
+    logging.debug(f"Searching PubMed for: {query}")
     url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
     params = {
         "db": "pubmed",
-        "retmode": "xml",
-        "retmax": "20",  # Max 20 articles
-        "term": query
+        "term": query,
+        "retmode": "json",
+        "retmax": max_results
     }
     response = requests.get(url, params=params)
-    data = xmltodict.parse(response.text)
-
-    ids = data["eSearchResult"]["IdList"].get("Id", [])
-    if isinstance(ids, str):  # if only 1 ID returned
-        ids = [ids]
-
-    print(f"[DEBUG] Found {len(ids)} PubMed IDs")
-    return ids
+    response.raise_for_status()
+    data = response.json()
+    return data["esearchresult"]["idlist"]
 
 def fetch_details(pubmed_ids: List[str]) -> List[Dict]:
-    print(f"[DEBUG] Fetching details for {len(pubmed_ids)} articles")
-    if not pubmed_ids:
-        return []
-
     url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
     params = {
         "db": "pubmed",
-        "retmode": "xml",
-        "id": ",".join(pubmed_ids)
+        "id": ",".join(pubmed_ids),
+        "retmode": "xml"
     }
     response = requests.get(url, params=params)
-    data = xmltodict.parse(response.text)
-
-    articles = data.get("PubmedArticleSet", {}).get("PubmedArticle", [])
-    if isinstance(articles, dict):  # single article case
+    response.raise_for_status()
+    articles = xmltodict.parse(response.content)["PubmedArticleSet"]["PubmedArticle"]
+    if isinstance(articles, dict):
         articles = [articles]
-
-    print(f"[DEBUG] Retrieved {len(articles)} full article records")
     return articles
+

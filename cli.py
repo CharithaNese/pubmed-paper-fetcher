@@ -1,72 +1,36 @@
-# cli.py
-
-import typer
+import argparse
+import logging
 import pandas as pd
 from pubmed.fetcher import fetch_pubmed_ids, fetch_details
 from pubmed.filters import extract_non_academic_authors
 
-app = typer.Typer()
+def main():
+    parser = argparse.ArgumentParser(description="Fetch PubMed papers with non-academic authors.")
+    parser.add_argument("query", help="Search query for PubMed")
+    parser.add_argument("-f", "--file", default="results.csv", help="Output CSV filename")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    args = parser.parse_args()
 
-@app.command()
-def main(
-    query: str,
-    file: str = typer.Option(None, "-f", "--file", help="Output file"),
-    debug: bool = typer.Option(False, "-d", "--debug"),
-    help_flag: bool = typer.Option(False, "-h", "--help", is_eager=True)
-):
-    if help_flag:
-        typer.echo("Usage: get-papers-list 'query' [-f file.csv] [-d]")
-        raise typer.Exit()
+    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO, format='[%(levelname)s] %(message)s')
 
-    if debug:
-        typer.echo(f"[DEBUG] Searching PubMed for: {query}")
+    try:
+        pubmed_ids = fetch_pubmed_ids(args.query)
+        logging.debug(f"Found {len(pubmed_ids)} PubMed IDs")
 
-    ids = fetch_pubmed_ids(query)
+        articles = fetch_details(pubmed_ids)
+        logging.debug(f"Retrieved {len(articles)} full article records")
 
-    if debug:
-        typer.echo(f"[DEBUG] Found {len(ids)} PubMed IDs")
+        all_authors = []
+        for i, article in enumerate(articles):
+            try:
+                authors = extract_non_academic_authors(article)
+                all_authors.extend(authors)
+            except Exception as e:
+                logging.error(f"Failed to process article: {i}\n{e}")
 
-    articles = fetch_details(ids)
-
-    if debug:
-        typer.echo(f"[DEBUG] Retrieved {len(articles)} full article records")
-
-    results = []
-    for article in articles:
-        try:
-            pmid = article["MedlineCitation"]["PMID"]["#text"]
-            title = article["MedlineCitation"]["Article"]["ArticleTitle"]
-            date = article["MedlineCitation"]["Article"].get("Journal", {}).get("JournalIssue", {}).get("PubDate", {}).get("Year", "N/A")
-            non_acads = extract_non_academic_authors(article)
-
-            for person in non_acads:
-                results.append({
-                    "PubmedID": pmid,
-                    "Title": title,
-                    "Publication Date": date,
-                    "Non-academic Author(s)": person["Name"],
-                    "Company Affiliation(s)": person["Affiliation"],
-                })
-        except Exception as e:
-            if debug:
-                typer.echo(f"[ERROR] Failed to process article: {e}")
-            continue
-
-    if debug:
-        typer.echo(f"[DEBUG] Filtered down to {len(results)} non-academic articles")
-
-    df = pd.DataFrame(results)
-    if file:
-        try:
-            df.to_csv(file, index=False)
-            if debug:
-                typer.echo(f"[DEBUG] Saved {len(results)} records to {file}")
-        except PermissionError:
-            typer.echo("[ERROR] Cannot write to file — it may be open in Excel. Close it and try again.")
-    else:
-        typer.echo(df.to_string(index=False))
-
-
-if __name__ == "__main__":
-    app()
-
+        logging.debug(f"Filtered down to {len(all_authors)} non-academic author records")
+        df = pd.DataFrame(all_authors)
+        df.to_csv(args.file, index=False)
+        logging.debug(f"Saved {len(all_authors)} records to {args.file}")
+    except Exception as e:
+        logging.error(f"An error occurred: {e}")
